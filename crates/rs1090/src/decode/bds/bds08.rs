@@ -170,7 +170,6 @@ impl fmt::Display for WakeVortex {
 pub fn wake_vortex(tc: Typecode, ca: u8) -> Result<WakeVortex, DekuError> {
     let wake_vortex = match (tc, ca) {
         (Typecode::D, _) => WakeVortex::Reserved,
-        (_, 0) => WakeVortex::NoInformation,
         (Typecode::C, 1) => WakeVortex::EmergencyVehicle,
         (Typecode::C, 3) => WakeVortex::ServiceVehicle,
         (Typecode::C, _) => WakeVortex::Obstruction,
@@ -188,6 +187,7 @@ pub fn wake_vortex(tc: Typecode, ca: u8) -> Result<WakeVortex, DekuError> {
         (Typecode::A, 5) => WakeVortex::Heavy,
         (Typecode::A, 6) => WakeVortex::HighPerformance,
         (Typecode::A, 7) => WakeVortex::Rotorcraft,
+        (_, 0) => WakeVortex::NoInformation,
         _ => WakeVortex::Reserved, // only 3 bits anyway
     };
     Ok(wake_vortex)
