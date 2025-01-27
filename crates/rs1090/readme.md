@@ -3,19 +3,23 @@
 rs1090 is a Rust library to decode Mode S, ADS-B and FLARM messages.
 
 It takes its inspiration from the Python [pyModeS](https://github.com/junzis/pyModeS) library, and uses [deku](https://github.com/sharksforarms/deku) in order to decode binary data in a clean declarative way.
-
 The project started as a fork of a very similar project called [adsb-deku](https://crates.io/crates/adsb_deku), but modules have been refactored to match [pyModeS](https://github.com/junzis/pyModeS) design, implementations extensively reviewed, simplified, corrected, and completed.
 
-The directions ambitioned by rs1090 boil down to:
+The directions ambitioned by rs1090 include:
 
 - improving the performance of Mode S decoding in Python;
-- exporting trajectory data to cross-platform formats such as JSON or parquet;
+- exporting trajectory data to cross-platform formats such as JSON, gRPC, arrow;
 - providing efficient multi-receiver Mode S decoding;
 - serving real-time enriched trajectory data to external applications.
 
-If you just want to decode ADS-B messages from your Raspberry and visualize the data on a map, you may want to stick to one of the dump0190 implementations.
+If you just want something stable to decode ADS-B messages from your Raspberry and visualize the data on a map, you may want to stick to one of the dump0190 implementations.
 
-The rs1090 library comes with a companion application [decode1090](https://crates.io/crates/decode1090), a live decoder [jet1090](https://crates.io/crates/jet1090), and a Python binding [rs1090](https://pypi.org/project/rs1090).
+The rs1090 library comes with:
+
+- a companion application [decode1090](https://crates.io/crates/decode1090),
+- a live decoder [jet1090](https://mode-s.org/jet1090),
+- a Python binding [rs1090](https://pypi.org/project/rs1090).
+- and a WebAssembly binding [rs1090-wasm](https://www.npmjs.com/package/rs1090-wasm).
 
 ## Performance
 
@@ -31,7 +35,7 @@ The Python script for benchmarking is in [python/examples](python/examples/bench
 The Rust benchmark is executed with `cargo bench`.  
 Both scripts are run on an Intel(R) Core(TM) i7-10850H CPU @ 2.70GHz.
 
-![Benchmark image](./python/examples/benchmark.svg)
+![Benchmark image](https://raw.githubusercontent.com/xoolive/rs1090/refs/heads/master/python/examples/benchmark.svg)
 
 > [!NOTE]  
 > The default out-of-the-box mode of `rs1090` is an execution distributed on all your cores. This benchmark was performed on a regular laptop. It can be much faster on supercomputers, but considering that most laptops now have at least 4 cores, this benchmark yields the speed-up you should get on your own computer.
@@ -68,6 +72,12 @@ fn main() {
 ```
 
 See more examples in the `crates/rs1090/examples` folder.
+
+## jet1090
+
+The jet1090 executable is documented on [https://mode-s.org/jet1090](https://mode-s.org/jet1090)
+
+![jet1090](https://raw.githubusercontent.com/xoolive/rs1090/refs/heads/master/docs/images/jet1090-table.png)
 
 ## Python bindings
 
@@ -125,6 +135,10 @@ For FLARM messages (also as batches):
  'gps': 129}
 ```
 
+## WebAssembly bindings
+
+Usage is documented on [https://observablehq.com/@xoolive/rs1090](https://observablehq.com/@xoolive/rs1090).
+
 ## decode1090
 
 Prebuilt binaries are available on the [Releases page](https://github.com/xoolive/rs1090/releases?q=decode1090).  
@@ -134,22 +148,20 @@ Usage is available with the help command.
 decode1090 --help
 ```
 
-## jet1090
-
-Prebuilt binaries are available on the [Releases page](https://github.com/xoolive/rs1090/releases?q=jet1090).  
-Usage is available with the help command.
-
-```sh
-jet1090 --help
-```
-
-## nix
+## Nix platform
 
 This repository provides a Nix flake configuration for building and managing this project.
+
+You may run the following to get the `jet1090` and `decode1090` executables in your PATH
+
+```sh
+nix profile install
+```
+
+For reference:
 
 ```sh
 nix develop  # open a shell with the proper environment to compile rs1090
 nix build  # build the jet1090 executable
 nix run  # run the jet1090 executable
-nix profile install  # install jet1090 and decode1090 in your PATH
 ```

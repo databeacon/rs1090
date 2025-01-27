@@ -199,20 +199,14 @@ fn nl(lat: f64) -> u64 {
 const D_LAT_EVEN: f64 = 360.0 / (4.0 * NZ);
 const D_LAT_ODD: f64 = 360.0 / (4.0 * NZ - 1.0);
 
-// Main difference for % between Python and Rust is that in Rust, the sign
-// of the result matches the sign of the dividend.
+// Module implementation according to 1090 MOPS, Vol.1 DO-260C, A.1.7.5
 fn modulo(a: f64, b: f64) -> f64 {
-    if a >= 0. {
-        a % b
-    } else {
-        a % b + libm::fabs(b)
-    }
+    a - b * libm::floor(a / b)
 }
 
 /**
  * Decode airborne position from a pair of even and odd position message.
  */
-
 pub fn airborne_position(
     oldest: &AirbornePosition,
     latest: &AirbornePosition,
@@ -303,7 +297,6 @@ pub fn airborne_position(
  * location, etc. The reference position shall be within 180NM of the true
  * position.
  */
-
 pub fn airborne_position_with_reference(
     msg: &AirbornePosition,
     latitude_ref: f64,
@@ -318,8 +311,13 @@ pub fn airborne_position_with_reference(
         360. / 59.
     };
 
-    let j = libm::floor(latitude_ref / d_lat)
+    /* Older implementation:
+      let j = libm::floor(latitude_ref / d_lat)
         + libm::floor(0.5 + modulo(latitude_ref, d_lat) / d_lat - cpr_lat);
+    */
+
+    // From 1090 MOPS, Vol.1  DO-260C, A.1.7.5
+    let j = libm::floor(0.5 + latitude_ref / d_lat - cpr_lat);
 
     let lat = d_lat * (j + cpr_lat);
 
@@ -337,8 +335,14 @@ pub fn airborne_position_with_reference(
         nl(lat) - 1
     };
     let d_lon = if ni > 0 { 360. / ni as f64 } else { 360. };
-    let m = libm::floor(longitude_ref / d_lon)
+
+    /* Older implementation:
+      let m = libm::floor(longitude_ref / d_lon)
         + libm::floor(0.5 + modulo(longitude_ref, d_lon) / d_lon - cpr_lon);
+    */
+
+    // From 1090 MOPS, Vol.1  DO-260C, A.1.7.5
+    let m = libm::floor(0.5 + longitude_ref / d_lon - cpr_lon);
     let lon = d_lon * (m + cpr_lon);
 
     // Check that the answer is not more than half a cell away
@@ -358,7 +362,6 @@ pub fn airborne_position_with_reference(
  * location, etc. The reference position shall be within 45NM of the true
  * position.
  */
-
 pub fn surface_position_with_reference(
     msg: &SurfacePosition,
     latitude_ref: f64,
@@ -373,8 +376,13 @@ pub fn surface_position_with_reference(
         90. / 59.
     };
 
-    let j = libm::floor(latitude_ref / d_lat)
+    /* Older implementation:
+      let j = libm::floor(latitude_ref / d_lat)
         + libm::floor(0.5 + modulo(latitude_ref, d_lat) / d_lat - cpr_lat);
+    */
+
+    // From 1090 MOPS, Vol.1  DO-260C, A.1.7.5
+    let j = libm::floor(0.5 + latitude_ref / d_lat - cpr_lat);
 
     let lat = d_lat * (j + cpr_lat);
 
@@ -392,8 +400,14 @@ pub fn surface_position_with_reference(
         nl(lat) - 1
     };
     let d_lon = if ni > 0 { 90. / ni as f64 } else { 90. };
-    let m = libm::floor(longitude_ref / d_lon)
+
+    /* Older implementation:
+      let m = libm::floor(longitude_ref / d_lon)
         + libm::floor(0.5 + modulo(longitude_ref, d_lon) / d_lon - cpr_lon);
+    */
+
+    // From 1090 MOPS, Vol.1  DO-260C, A.1.7.5
+    let m = libm::floor(0.5 + longitude_ref / d_lon - cpr_lon);
     let lon = d_lon * (m + cpr_lon);
 
     // Check that the answer is not more than half a cell away
@@ -407,6 +421,8 @@ pub fn surface_position_with_reference(
     })
 }
 
+pub type UpdateIf = Option<Box<dyn Fn(&AirbornePosition) -> bool>>;
+
 /**
  * Mutates the ME message based on recent past positions (parameter `timestamp`)
  * of the same aircraft (parameter `icao24`). For surface messages, the
@@ -416,13 +432,13 @@ pub fn surface_position_with_reference(
  * - `aircraft` is a hashmap of aircraft containing their most recent state;
  * - `reference` is a (possibly None) set of coordinates.
  */
-
 pub fn decode_position(
     message: &mut ME,
     timestamp: f64,
     icao24: &ICAO,
     aircraft: &mut BTreeMap<ICAO, AircraftState>,
     reference: &mut Option<Position>,
+    update_reference: &UpdateIf,
 ) {
     let latest = aircraft.entry(*icao24).or_insert(AircraftState {
         timestamp,
@@ -487,9 +503,9 @@ pub fn decode_position(
                 // Then update the reference in aircraft
                 latest.pos = Some(pos);
                 latest.timestamp = timestamp;
-                // If necessary update the reference position
-                if let Some(alt) = airborne.alt {
-                    if alt < 1000 {
+                // If necessary (according to the callback) update the reference position
+                if let Some(update_reference) = update_reference {
+                    if update_reference(airborne) {
                         *reference = Some(Position {
                             latitude: pos.latitude,
                             longitude: pos.longitude,
@@ -550,7 +566,11 @@ pub fn decode_position(
 /**
  * This function is only used  for the decoding of offline messages.
  */
-pub fn decode_positions(res: &mut [TimedMessage], reference: Option<Position>) {
+pub fn decode_positions(
+    res: &mut [TimedMessage],
+    reference: Option<Position>,
+    update_reference: &UpdateIf,
+) {
     let mut aircraft: BTreeMap<ICAO, AircraftState> = BTreeMap::new();
     let mut reference = reference;
 
@@ -565,6 +585,7 @@ pub fn decode_positions(res: &mut [TimedMessage], reference: Option<Position>) {
                         &adsb.icao24,
                         &mut aircraft,
                         &mut reference,
+                        update_reference,
                     ),
                     DF::ExtendedSquitterTisB { cf, .. } => decode_position(
                         &mut cf.me,
@@ -572,6 +593,7 @@ pub fn decode_positions(res: &mut [TimedMessage], reference: Option<Position>) {
                         &cf.aa,
                         &mut aircraft,
                         &mut reference,
+                        update_reference,
                     ),
                     _ => {}
                 }
@@ -676,6 +698,31 @@ mod tests {
 
         assert_relative_eq!(latitude, 49.81755, max_relative = 1e-3);
         assert_relative_eq!(longitude, 6.08442, max_relative = 1e-3);
+    }
+
+    #[test]
+    fn decode_airborne_position_with_reference_numerical_challenge() {
+        let lat_ref = 30.508474576271183; // Close to (360.0/59.0)*5
+        let lon_ref = 7.2 * 5.0 + 3e-15;
+
+        let bytes = hex!("8d06a15358bf17ff7d4a84b47b95");
+        let (_, msg) = Message::from_bytes((&bytes, 0)).unwrap();
+
+        let msg = match msg.df {
+            ExtendedSquitterADSB(msg) => match msg.message {
+                ME::BDS05(me) => me,
+                _ => unreachable!(),
+            },
+            _ => unreachable!(),
+        };
+
+        let Position {
+            latitude,
+            longitude,
+        } = airborne_position_with_reference(&msg, lat_ref, lon_ref).unwrap();
+
+        assert_relative_eq!(latitude, 30.50540, max_relative = 1e-3);
+        assert_relative_eq!(longitude, 33.44787, max_relative = 1e-3);
     }
 
     #[test]

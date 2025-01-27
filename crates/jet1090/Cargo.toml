@@ -1,6 +1,6 @@
 [package]
 name = "jet1090"
-description = "Real-time Mode S and ADS-B data with REST and ZMQ endpoints"
+description = "A real-time comprehensive Mode S and ADS-B data decoder"
 repository = "https://github.com/xoolive/rs1090"
 keywords = ["aircraft", "ADS-B", "Mode-S", "decoding"]
 readme = "readme.md"
@@ -12,33 +12,37 @@ homepage.workspace = true
 
 [features]
 rtlsdr = ['rs1090/rtlsdr']
+sero = ['rs1090/sero']
 
 [dependencies]
 chrono = "0.4.37"
-clap = { version = "4.5.20", features = ["color", "derive", "wrap_help"] }
-clap_complete = "4.5.33"
+clap = { version = "4.5.27", features = ["color", "derive", "wrap_help"] }
+clap_complete = "4.5.42"
+clap_complete_nushell = "4.5.5"
 crossterm = { version = "0.28.1", features = ["event-stream"] }
 deku = "0.18.1"
-dirs = "5.0.1"
+dirs = "6.0.0"
 dotenv = "0.15.0"
 futures = "0.3.31"
 futures-util = "0.3.31"
 hex = "0.4.3"
-ratatui = "0.28.1"
-reqwest = "0.12.5"
-rs1090 = { version = "0.3.8", path = "../rs1090" }
-rusqlite = { version = "0.32.1", features = ["bundled"] }
-serde = { version = "1.0.210", features = ["derive"] }
-serde_json = "1.0.128"
-soapysdr = { version = "0.4.0", optional = true }
-tokio = { version = "1.40.0", features = ["full"] }
+keepawake = "0.5.1"
+ratatui = "0.29.0"
+redis = { version = "0.28.2", features = ["tokio-comp"] }
+regex = "1.11.1"
+reqwest = "0.12.9"
+rs1090 = { version = "0.4.4", path = "../rs1090" }
+rusqlite = { version = "0.33.0", features = ["bundled"] }
+serde = { version = "1.0.217", features = ["derive"] }
+serde_json = "1.0.137"
+soapysdr = { version = "0.4.1", optional = true }
+tokio = { version = "1.43.0", features = ["full"] }
 toml = "0.8.19"
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
-url = "2.5.2"
+url = "2.5.4"
 warp = "0.3.6"
-zip = "2.1.6"
-redis = { version = "0.27.4", features = ["tokio-comp"] }
+zip = "2.2.2"
 
 [[bin]]
 name = "jet1090"

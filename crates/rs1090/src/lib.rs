@@ -20,15 +20,20 @@ pub mod prelude {
     /// The root structure to decode messages
     pub use crate::decode::Message;
     pub use crate::decode::DF::*;
-    pub use crate::decode::{TimedMessage, ICAO};
+    pub use crate::decode::{
+        cpr::Position, SensorMetadata, TimedMessage, ICAO,
+    };
 
     /// This re-export is necessary for the following export
     pub use futures_util::stream::StreamExt;
 
     /// Information on the structure of a Beast message
+    #[cfg(not(target_arch = "wasm32"))]
     pub use crate::source::beast;
-    pub use crate::source::radarcape;
 
     #[cfg(feature = "rtlsdr")]
     pub use crate::source::rtlsdr;
+
+    #[cfg(feature = "sero")]
+    pub use crate::source::sero;
 }

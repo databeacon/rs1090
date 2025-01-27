@@ -1,14 +1,19 @@
 use chrono::prelude::*;
 use ratatui::prelude::*;
 use ratatui::widgets::*;
+use regex::Regex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use style::palette::tailwind;
 
 use crate::snapshot::Snapshot;
 use crate::{Jet1090, SortKey};
 
-const INFO_TEXT: &str = "(Esc/Q) quit | (↑/K) up | (↓/J) down | (⤒/G) top";
+const INFO_TEXT: &str =
+    "(Esc/Q) quit | (↑/K) up | (↓/J) down | (⤒/G) top | (/) search";
 
+/**
+ * Rendering of the table in interactive mode
+ */
 pub fn build_table(frame: &mut Frame, app: &mut Jet1090) {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -20,11 +25,37 @@ pub fn build_table(frame: &mut Frame, app: &mut Jet1090) {
 
     let states = &app.state_vectors;
 
-    app.items = states
-        .values()
-        .filter(|sv| {
-            (sv.cur.count > 1) && (now as i64 - sv.cur.last as i64) < 30
-        })
+    // Filter items based on search query
+    let search_query = app.search_query.to_lowercase().replace("-", "");
+    let search_regex =
+        Regex::new(&search_query).unwrap_or_else(|_| Regex::new("").unwrap());
+    let filtered_states =
+        states
+            .values()
+            .filter(|sv| {
+                (sv.cur.count > 1)
+                    && (now as i64 - sv.cur.lastseen as i64) < 30
+                    && (sv.cur.callsign.as_ref().is_some_and(|s| {
+                        search_regex.is_match(&s.to_lowercase())
+                    }) || search_regex
+                        .is_match(&sv.cur.icao24.to_lowercase())
+                        || sv.cur.typecode.as_ref().is_some_and(|s| {
+                            search_regex.is_match(&s.to_lowercase())
+                        })
+                        || sv.cur.registration.as_ref().is_some_and(|s| {
+                            search_regex
+                                .is_match(&s.replace("-", "").to_lowercase())
+                        })
+                        || sv.cur.metadata.iter().any(|m| {
+                            m.name.as_ref().is_some_and(|n| {
+                                search_regex.is_match(&n.to_lowercase())
+                            })
+                        }))
+            })
+            .collect::<Vec<&StateVectors>>();
+
+    app.items = filtered_states
+        .iter()
         .map(|sv| sv.cur.icao24.to_string())
         .collect();
 
@@ -35,12 +66,7 @@ pub fn build_table(frame: &mut Frame, app: &mut Jet1090) {
     let colors = TableColors::new(&tailwind::CYAN);
 
     use crate::snapshot::StateVectors;
-    let mut sorted_elts = states
-        .values()
-        .filter(|sv| {
-            (sv.cur.count > 1) && (now as i64 - sv.cur.last as i64) < 30
-        })
-        .collect::<Vec<&StateVectors>>();
+    let mut sorted_elts = filtered_states;
 
     let sort_by = match &app.sort_key {
         SortKey::ALTITUDE => |a: &&StateVectors, b: &&StateVectors| {
@@ -55,12 +81,12 @@ pub fn build_table(frame: &mut Frame, app: &mut Jet1090) {
         SortKey::COUNT => {
             |a: &&StateVectors, b: &&StateVectors| a.cur.count.cmp(&b.cur.count)
         }
-        SortKey::FIRST => {
-            |a: &&StateVectors, b: &&StateVectors| a.cur.first.cmp(&b.cur.first)
-        }
-        SortKey::LAST => {
-            |a: &&StateVectors, b: &&StateVectors| a.cur.last.cmp(&b.cur.last)
-        }
+        SortKey::FIRST => |a: &&StateVectors, b: &&StateVectors| {
+            a.cur.firstseen.cmp(&b.cur.firstseen)
+        },
+        SortKey::LAST => |a: &&StateVectors, b: &&StateVectors| {
+            a.cur.lastseen.cmp(&b.cur.lastseen)
+        },
     };
 
     sorted_elts.sort_by(sort_by);
@@ -177,7 +203,7 @@ pub fn build_table(frame: &mut Frame, app: &mut Jet1090) {
     };
     let rows = sorted_elts
         .iter()
-        .filter(|sv| (now as i64 - sv.cur.last as i64) < 30)
+        .filter(|sv| (now as i64 - sv.cur.lastseen as i64) < 30)
         .enumerate()
         .map(|(i, sv)| {
             let color = match i % 2 {
@@ -226,7 +252,7 @@ pub fn build_table(frame: &mut Frame, app: &mut Jet1090) {
                 .borders(Borders::ALL),
         )
         .bg(colors.buffer_bg)
-        .highlight_style(
+        .row_highlight_style(
             Style::default()
                 .add_modifier(Modifier::REVERSED)
                 .fg(colors.selected_style_fg),
@@ -249,14 +275,29 @@ pub fn build_table(frame: &mut Frame, app: &mut Jet1090) {
     );
 
     let area = rects[1];
-    frame.render_widget(
-        Paragraph::new(Line::from(INFO_TEXT))
+    if app.is_search_mode {
+        frame.render_widget(
+            Paragraph::new(Line::from(format!(
+                "Search (Esc to cancel, Enter to lock): {}",
+                app.search_query
+            )))
             .style(Style::new().fg(colors.row_fg).bg(colors.buffer_bg))
-            .centered(),
-        area,
-    );
+            .left_aligned(),
+            area,
+        );
+    } else {
+        frame.render_widget(
+            Paragraph::new(Line::from(INFO_TEXT))
+                .style(Style::new().fg(colors.row_fg).bg(colors.buffer_bg))
+                .centered(),
+            area,
+        );
+    }
 }
 
+/**
+ * Style-sheet of the table displayed in interactive mode
+ */
 struct TableColors {
     buffer_bg: Color,
     header_bg: Color,
@@ -289,6 +330,9 @@ trait Render {
     fn constraint(&self) -> Constraint;
 }
 
+/**
+ * Describes how to render information in a given column
+ */
 #[allow(clippy::upper_case_acronyms)]
 enum ColumnRender {
     ICAO24,
@@ -377,18 +421,23 @@ impl Render for ColumnRender {
                 s.nacp.map(|v| format!("{}", v)).unwrap_or("".to_string())
             }
             Self::COUNT => s.count.to_string(),
-            Self::REFERENCE => s.airport.clone().unwrap_or("".to_string()),
-            // s.reference.to_string(),
+            Self::REFERENCE => s
+                .metadata
+                .first()
+                .unwrap()
+                .name
+                .clone()
+                .unwrap_or("".to_string()),
             Self::LAST => {
-                if now > s.last + 5 {
-                    format!("{}s ago", now - s.last)
+                if now > s.lastseen + 5 {
+                    format!("{}s ago", now - s.lastseen)
                 } else {
                     "".to_string()
                 }
             }
             Self::FIRST => {
                 let dt: DateTime<Utc> =
-                    DateTime::from_timestamp(s.first as i64, 0).unwrap();
+                    DateTime::from_timestamp(s.firstseen as i64, 0).unwrap();
                 format!("{}", dt.format("%H:%M"))
             }
         }
@@ -471,7 +520,7 @@ impl Render for ColumnRender {
             ColumnRender::ROLL => Constraint::Length(5),
             ColumnRender::NACP => Constraint::Length(3),
             ColumnRender::COUNT => Constraint::Length(8),
-            ColumnRender::REFERENCE => Constraint::Length(4),
+            ColumnRender::REFERENCE => Constraint::Length(8),
             ColumnRender::LAST => Constraint::Length(7),
             ColumnRender::FIRST => Constraint::Length(5),
         }

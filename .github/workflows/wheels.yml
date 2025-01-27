@@ -138,7 +138,7 @@ jobs:
     strategy:
       matrix:
         platform:
-          - runner: macos-12
+          - runner: macos-13
             target: x86_64
           - runner: macos-14
             target: aarch64
@@ -198,4 +198,4 @@ jobs:
           MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
         with:
           command: upload
-          args: --non-interactive --skip-existing *.whl
+          args: --non-interactive --skip-existing *.whl *.tar.gz

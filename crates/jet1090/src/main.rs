@@ -1,23 +1,31 @@
 #![doc = include_str!("../readme.md")]
 
 mod aircraftdb;
-mod cli;
+mod dedup;
+mod filters;
+mod sensor;
+mod shell;
 mod snapshot;
+mod source;
 mod table;
 mod tui;
 mod web;
 
+use crate::tui::Event;
+use crate::web::TrackQuery;
 use clap::{Command, CommandFactory, Parser, ValueHint};
-use clap_complete::{generate, Generator, Shell};
-use cli::Source;
+use clap_complete::{generate, Generator};
 use crossterm::event::KeyCode;
 use ratatui::widgets::*;
 use redis::AsyncCommands;
 use rs1090::decode::cpr::{decode_position, AircraftState};
+use rs1090::decode::serialize_config;
 use rs1090::prelude::*;
+use sensor::Sensor;
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::io;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::SystemTime;
 use tokio::fs;
@@ -25,9 +33,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
-use tui::Event;
 use warp::Filter;
-use web::TrackQuery;
 
 #[derive(Default, Deserialize, Parser)]
 #[command(
@@ -53,25 +59,44 @@ struct Options {
     #[arg(long, default_value=None)]
     serve_port: Option<u16>,
 
-    /// How much history to expire (in minutes)
+    /// How much history to expire (in minutes), 0 for no history
     #[arg(long, short = 'x')]
-    expire: Option<u64>,
+    history_expire: Option<u64>,
+
+    /// Downlink formats to select for stdout, file output and history in REST API (keep empty to select all)
+    #[arg(long, value_name = "DF")]
+    df_filter: Option<Vec<u16>>,
+
+    /// Aircraft addresses to select for stdout, file output and history in REST API (keep empty to select all)
+    #[arg(long, value_name = "ICAO24")]
+    aircraft_filter: Option<Vec<ICAO>>,
+
+    /// Prevent the computer sleeping when decoding is in progress
+    #[arg(long, default_value=None)]
+    prevent_sleep: bool,
 
     /// Should we update the reference positions (if the receiver is moving)
-    #[arg(short, long, default_value = "false")]
+    #[arg(short, long, default_value=None)]
     update_position: bool,
+
+    /// When performing deduplication, after how long to dump deduplicated messages (time in ms)
+    #[arg(long, default_value = "450")]
+    deduplication: Option<u32>,
+
+    #[arg(long)]
+    stats: Option<bool>,
 
     /// Shell completion generation
     #[arg(long = "completion", value_enum)]
     #[serde(skip)]
-    completion: Option<Shell>,
+    completion: Option<shell::Shell>,
 
     /// List the sources of data following the format \[host:\]port\[\@reference\]
     //
     // - `host` can be a DNS name, an IP address or `rtlsdr` (for RTL-SDR dongles)
     // - `port` must be a number
     // - `reference` can be LFPG for major airports, `43.3,1.35` otherwise
-    sources: Vec<cli::Source>,
+    sources: Vec<source::Source>,
 
     #[cfg(feature = "rtlsdr")]
     /// List the detected devices, for now, only --discover rtlsdr is fully supported
@@ -94,6 +119,17 @@ struct Options {
     redis_topic: Option<String>,
 }
 
+fn expanduser(path: PathBuf) -> PathBuf {
+    // Check if the path starts with "~"
+    if let Some(stripped) = path.to_str().and_then(|p| p.strip_prefix("~")) {
+        if let Some(home_dir) = dirs::home_dir() {
+            // Join the home directory with the rest of the path
+            return home_dir.join(stripped.trim_start_matches('/'));
+        }
+    }
+    path
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load environment variables from a .env file
@@ -101,7 +137,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut options = Options::default();
 
-    let mut cfg_path = dirs::config_dir().unwrap_or_default();
+    let mut cfg_path = match std::env::var("XDG_CONFIG_HOME") {
+        Ok(xdg_config) => expanduser(PathBuf::from(xdg_config)),
+        Err(_) => dirs::config_dir().unwrap_or_default(),
+    };
     cfg_path.push("jet1090");
     cfg_path.push("config.toml");
 
@@ -111,7 +150,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     if let Ok(config_file) = std::env::var("JET1090_CONFIG") {
-        let string = fs::read_to_string(config_file)
+        let path = expanduser(PathBuf::from(config_file));
+        let string = fs::read_to_string(path)
             .await
             .expect("Configuration file not found");
         options = toml::from_str(&string).unwrap();
@@ -138,17 +178,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if cli_options.serve_port.is_some() {
         options.serve_port = cli_options.serve_port;
     }
-    if cli_options.expire.is_some() {
-        options.expire = cli_options.expire;
+    if cli_options.history_expire.is_some() {
+        options.history_expire = cli_options.history_expire;
+    }
+    if cli_options.df_filter.is_some() {
+        options.df_filter = cli_options.df_filter;
+    }
+    if cli_options.aircraft_filter.is_some() {
+        options.aircraft_filter = cli_options.aircraft_filter;
+    }
+    if cli_options.prevent_sleep {
+        options.prevent_sleep = cli_options.prevent_sleep;
     }
     if cli_options.update_position {
         options.update_position = cli_options.update_position;
+    }
+    if cli_options.log_file.is_some() {
+        options.log_file = cli_options.log_file;
     }
     if cli_options.redis_url.is_some() {
         options.redis_url = cli_options.redis_url;
     }
     if cli_options.redis_topic.is_some() {
         options.redis_topic = cli_options.redis_topic;
+    }
+    if cli_options.stats.is_some() {
+        options.stats = cli_options.stats;
+    }
+    if cli_options.deduplication.is_some() {
+        options.deduplication = cli_options.deduplication;
+    }
+    if options.stats.unwrap_or(false) {
+        serialize_config(true);
     }
 
     options.sources.append(&mut cli_options.sources);
@@ -157,7 +218,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let env_filter = EnvFilter::from_default_env();
 
     let subscriber = tracing_subscriber::registry().with(env_filter);
-    match cli_options.log_file.as_deref() {
+    match options.log_file.as_deref() {
         Some("-") if !cli_options.interactive => {
             // when it's interactive, logs will disrupt the display
             subscriber.with(fmt::layer().pretty()).init();
@@ -176,7 +237,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     #[cfg(feature = "rtlsdr")]
     if let Some(args) = cli_options.discover {
-        rtlsdr::enumerate(&format!("driver={args}"));
+        rtlsdr::enumerate(&args.to_string());
         return Ok(());
     }
 
@@ -184,12 +245,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .redis_url
         .map(|url| redis::Client::open(url).unwrap())
     {
-        Some(c) => Some(c.get_multiplexed_async_connection().await?),
+        // map is not possible because of the .await (the async context thing)
+        Some(c) => Some(
+            c.get_multiplexed_async_connection()
+                .await
+                .expect("Unable to connect to the Redis server"),
+        ),
         None => None,
     };
     let redis_topic = options.redis_topic.unwrap_or("jet1090".to_string());
 
+    let filters = filters::Filters {
+        df_filter: options
+            .df_filter
+            .map(|df| df.into_iter().map(|v| format!("{}", v)).collect()),
+        aircraft_filter: options.aircraft_filter,
+    };
+
     let mut file = if let Some(output_path) = options.output {
+        let output_path = expanduser(PathBuf::from(output_path));
         Some(
             fs::OpenOptions::new()
                 .append(true)
@@ -202,6 +276,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let aircraftdb = aircraftdb::aircraft().await;
+
+    let _awake = match options.prevent_sleep {
+        true => Some(
+            keepawake::Builder::default()
+                .display(false)
+                .idle(true)
+                .sleep(true)
+                .reason("jet1090 decoding in progress")
+                .app_name("jet1090")
+                .app_reverse_domain("io.github.jet1090")
+                .create()?,
+        ),
+        false => None,
+    };
 
     let mut aircraft: BTreeMap<ICAO, AircraftState> = BTreeMap::new();
 
@@ -218,8 +306,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut events = tui::EventHandler::new(width);
 
+    let mut references = BTreeMap::<u64, Option<Position>>::new();
+    let mut sensors = BTreeMap::<u64, Sensor>::new();
+    for source in options.sources.iter() {
+        for sensor in sensor::sensors(source).await {
+            references.insert(sensor.serial, sensor.reference);
+            sensors.insert(sensor.serial, sensor);
+        }
+    }
     let app_tui = Arc::new(Mutex::new(Jet1090 {
-        sources: options.sources.clone(),
+        sensors,
         items: Vec::new(),
         state: TableState::default().with_selected(0),
         scroll_state: ScrollbarState::new(0),
@@ -229,6 +325,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         sort_key: SortKey::default(),
         sort_asc: false,
         width,
+        is_search_mode: false,
+        search_query: "".to_string(),
     }));
     let app_dec = app_tui.clone();
     let app_web = app_tui.clone();
@@ -254,43 +352,46 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
-    if let Some(minutes) = options.expire {
-        tokio::spawn(async move {
-            let app_expire = app_exp.clone();
-            loop {
-                sleep(Duration::from_secs(60)).await;
-                {
-                    let mut app = app_expire.lock().await;
-                    let now = SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .expect("SystemTime before unix epoch")
-                        .as_secs();
+    if let Some(minutes) = options.history_expire {
+        // No need to start this task if we don't store history
+        if minutes > 0 {
+            tokio::spawn(async move {
+                let app_expire = app_exp.clone();
+                loop {
+                    sleep(Duration::from_secs(60)).await;
+                    {
+                        let mut app = app_expire.lock().await;
+                        let now = SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .expect("SystemTime before unix epoch")
+                            .as_secs();
 
-                    let remove_keys = app
-                        .state_vectors
-                        .iter()
-                        .filter(|(_key, value)| {
-                            now > value.cur.last + minutes * 60
-                        })
-                        .map(|(key, _)| key.to_string())
-                        .collect::<Vec<String>>();
-
-                    for key in remove_keys {
-                        app.state_vectors.remove(&key);
-                    }
-
-                    let _ = app
-                        .state_vectors
-                        .iter_mut()
-                        .map(|(_key, value)| {
-                            value.hist.retain(|elt| {
-                                now < (elt.timestamp as u64) + minutes * 60
+                        let remove_keys = app
+                            .state_vectors
+                            .iter()
+                            .filter(|(_key, value)| {
+                                now > value.cur.lastseen + minutes * 60
                             })
-                        })
-                        .collect::<Vec<()>>();
+                            .map(|(key, _)| key.to_string())
+                            .collect::<Vec<String>>();
+
+                        for key in remove_keys {
+                            app.state_vectors.remove(&key);
+                        }
+
+                        let _ = app
+                            .state_vectors
+                            .iter_mut()
+                            .map(|(_key, value)| {
+                                value.hist.retain(|elt| {
+                                    now < (elt.timestamp as u64) + minutes * 60
+                                })
+                            })
+                            .collect::<Vec<()>>();
+                    }
                 }
-            }
-        });
+            });
+        }
     }
 
     if let Some(port) = options.serve_port {
@@ -320,11 +421,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     },
                 );
 
-            let app_receivers = app_web.clone();
-            let receivers = warp::path("receivers")
-                .and(warp::any().map(move || app_receivers.clone()))
+            let app_sensors = app_web.clone();
+            let sensors = warp::path("sensors")
+                .and(warp::any().map(move || app_sensors.clone()))
                 .and_then(|app: Arc<Mutex<Jet1090>>| async move {
-                    web::receivers(&app).await
+                    web::sensors(&app).await
                 });
 
             let cors = warp::cors()
@@ -333,7 +434,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .allow_methods(vec!["GET"]);
 
             let routes = warp::get()
-                .and(home.or(all).or(track).or(receivers))
+                .and(home.or(all).or(track).or(sensors))
                 .recover(web::handle_rejection)
                 .with(cors);
 
@@ -343,19 +444,39 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // I am not sure whether this size calibration is relevant, but let's try...
     // adding one in order to avoid the stupid error when you set a size = 0
-    let multiplier = options.sources.len();
-    let (tx, mut rx) = tokio::sync::mpsc::channel(100 * multiplier + 1);
+    let multiplier = references.len();
+    let (tx, rx) = tokio::sync::mpsc::channel(100 * multiplier + 1);
+    let (tx_dedup, mut rx_dedup) =
+        tokio::sync::mpsc::channel(100 * multiplier + 1);
 
-    for (idx, source) in options.sources.into_iter().enumerate() {
+    for source in options.sources.into_iter() {
+        let serial = source.serial();
         let tx_copy = tx.clone();
         tokio::spawn(async move {
-            source.receiver(tx_copy, idx).await;
+            source.receiver(tx_copy, serial, source.name.clone()).await;
         });
     }
 
+    tokio::spawn(async move {
+        dedup::deduplicate_messages(
+            rx,
+            tx_dedup,
+            options.deduplication.unwrap_or(450),
+        )
+        .await;
+    });
+
+    // If we choose to update the reference (only useful for surface positions)
+    // then we define the callback (for now, if the altitude is below 1000ft)
+    let update_reference = match options.update_position {
+        true => Some(Box::new(|pos: &AirbornePosition| {
+            pos.alt.is_some_and(|alt| alt < 1000)
+        }) as Box<dyn Fn(&AirbornePosition) -> bool>),
+        false => None,
+    };
+
     let mut first_msg = true;
-    while let Some(tmsg) = rx.recv().await {
-        let frame = hex::decode(&tmsg.frame).unwrap();
+    while let Some(mut msg) = rx_dedup.recv().await {
         if first_msg {
             // This workaround results from soapysdr writing directly on stdout.
             // The best thing would be to not write to stdout in the first
@@ -365,63 +486,94 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             app_dec.lock().await.should_clear = true;
             first_msg = false;
         }
-        if let Ok((_, msg)) = Message::from_bytes((&frame, 0)) {
-            let mut msg = TimedMessage {
-                timestamp: tmsg.timestamp,
-                timesource: tmsg.timesource,
-                rssi: tmsg.rssi,
-                frame: tmsg.frame.to_string(),
-                message: Some(msg),
-                idx: tmsg.idx,
-            };
-            let mut reference =
-                app_dec.lock().await.sources[tmsg.idx].reference;
 
-            if let Some(message) = &mut msg.message {
-                match &mut message.df {
-                    ExtendedSquitterADSB(adsb) => decode_position(
-                        &mut adsb.message,
-                        msg.timestamp,
-                        &adsb.icao24,
-                        &mut aircraft,
-                        &mut reference,
-                    ),
-                    ExtendedSquitterTisB { cf, .. } => decode_position(
-                        &mut cf.me,
-                        msg.timestamp,
-                        &cf.aa,
-                        &mut aircraft,
-                        &mut reference,
-                    ),
+        if let Some(message) = &mut msg.message {
+            match &mut message.df {
+                ExtendedSquitterADSB(adsb) => match adsb.message {
+                    ME::BDS05(_) | ME::BDS06(_) => {
+                        let serial = msg
+                            .metadata
+                            .first()
+                            .map(|meta| meta.serial)
+                            .unwrap();
+                        let mut reference = references[&serial];
+
+                        decode_position(
+                            &mut adsb.message,
+                            msg.timestamp,
+                            &adsb.icao24,
+                            &mut aircraft,
+                            &mut reference,
+                            &update_reference,
+                        );
+
+                        // References may have been modified.
+                        // With static receivers, we don't care; for dynamic ones, we may
+                        // want to update the reference position.
+                        if options.update_position {
+                            for meta in &msg.metadata {
+                                let _ =
+                                    references.insert(meta.serial, reference);
+                            }
+                        }
+                    }
                     _ => {}
-                }
-            };
+                },
+                ExtendedSquitterTisB { cf, .. } => match cf.me {
+                    ME::BDS05(_) | ME::BDS06(_) => {
+                        let serial = msg
+                            .metadata
+                            .first()
+                            .map(|meta| meta.serial)
+                            .unwrap();
 
-            // References may have been modified.
-            // With static receivers, we don't care; for dynamic ones, we may
-            // want to update the reference position.
-            if options.update_position {
-                app_dec.lock().await.sources[tmsg.idx].reference = reference;
+                        let mut reference = references[&serial];
+
+                        decode_position(
+                            &mut cf.me,
+                            msg.timestamp,
+                            &cf.aa,
+                            &mut aircraft,
+                            &mut reference,
+                            &update_reference,
+                        )
+                    }
+                    _ => {}
+                },
+                _ => {}
+            }
+        };
+
+        snapshot::update_snapshot(&app_dec, &mut msg, &aircraftdb).await;
+
+        let is_in = filters::Filters::is_in(&filters, &msg);
+
+        if let Ok(json) = serde_json::to_string(&msg) {
+            if options.verbose & is_in {
+                println!("{}", json);
             }
 
-            snapshot::update_snapshot(&app_dec, &mut msg, &aircraftdb).await;
-
-            if let Ok(json) = serde_json::to_string(&msg) {
-                if options.verbose {
-                    println!("{}", json);
-                }
+            if is_in {
                 if let Some(file) = &mut file {
                     file.write_all(json.as_bytes()).await?;
                     file.write_all("\n".as_bytes()).await?;
                 }
-
-                if let Some(c) = &mut redis_connect {
-                    let _: () = c.publish(redis_topic.clone(), json).await?;
-                }
             }
 
-            snapshot::store_history(&app_dec, msg, &aircraftdb).await;
+            if let Some(c) = &mut redis_connect {
+                let _: () = c.publish(redis_topic.clone(), json).await?;
+            }
         }
+
+        match options.history_expire {
+            Some(0) => (),
+            _ => {
+                if is_in {
+                    snapshot::store_history(&app_dec, msg, &aircraftdb).await
+                }
+            }
+        }
+
         if app_dec.lock().await.should_quit {
             break;
         }
@@ -431,7 +583,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 #[derive(Debug, Default)]
 pub struct Jet1090 {
-    sources: Vec<Source>,
+    sensors: BTreeMap<u64, Sensor>,
     state: TableState,
     items: Vec<String>,
     scroll_state: ScrollbarState,
@@ -441,6 +593,8 @@ pub struct Jet1090 {
     sort_key: SortKey,
     sort_asc: bool,
     width: u16,
+    is_search_mode: bool,
+    search_query: String,
 }
 
 #[derive(Debug, Default, PartialEq)]
@@ -461,30 +615,29 @@ fn update(
     match event {
         Event::Key(key) => {
             use KeyCode::*;
-            match key.code {
-                Char('j') | Down => jet1090.next(),
-                Char('k') | Up => jet1090.previous(),
-                Char('g') | PageUp | Home => jet1090.home(),
-                Char('q') | Esc => jet1090.should_quit = true,
-                Char('a') => {
-                    jet1090.sort_key = SortKey::ALTITUDE;
+
+            match (jet1090.is_search_mode, key.code) {
+                (true, Char(c)) => jet1090.search_query.push(c),
+                (true, Backspace) => {
+                    jet1090.search_query.pop();
                 }
-                Char('c') => {
-                    jet1090.sort_key = SortKey::CALLSIGN;
+                (true, Enter) => jet1090.is_search_mode = false,
+                (true, Esc) => {
+                    jet1090.is_search_mode = false;
+                    jet1090.search_query = "".to_string()
                 }
-                Char('v') => {
-                    jet1090.sort_key = SortKey::VRATE;
-                }
-                Char('.') => {
-                    jet1090.sort_key = SortKey::COUNT;
-                }
-                Char('f') => {
-                    jet1090.sort_key = SortKey::FIRST;
-                }
-                Char('l') => {
-                    jet1090.sort_key = SortKey::LAST;
-                }
-                Char('-') => jet1090.sort_asc = !jet1090.sort_asc,
+                (false, Char('j')) | (_, Down) => jet1090.next(),
+                (false, Char('k')) | (_, Up) => jet1090.previous(),
+                (false, Char('g')) | (_, PageUp) | (_, Home) => jet1090.home(),
+                (false, Char('q')) | (false, Esc) => jet1090.should_quit = true,
+                (false, Char('a')) => jet1090.sort_key = SortKey::ALTITUDE,
+                (false, Char('c')) => jet1090.sort_key = SortKey::CALLSIGN,
+                (false, Char('v')) => jet1090.sort_key = SortKey::VRATE,
+                (false, Char('.')) => jet1090.sort_key = SortKey::COUNT,
+                (false, Char('f')) => jet1090.sort_key = SortKey::FIRST,
+                (false, Char('l')) => jet1090.sort_key = SortKey::LAST,
+                (false, Char('-')) => jet1090.sort_asc = !jet1090.sort_asc,
+                (false, Char('/')) => jet1090.is_search_mode = true,
                 _ => {}
             }
         }
@@ -496,16 +649,15 @@ fn update(
 
 impl Jet1090 {
     pub fn receivers(&mut self) {
-        for source in &mut self.sources {
-            source.count = 0;
+        for sensor in self.sensors.values_mut() {
+            sensor.aircraft_count = 0;
         }
         for vector in self.state_vectors.values_mut() {
-            self.sources[vector.cur.idx]
-                .airport
-                .clone_into(&mut vector.cur.airport);
-            self.sources[vector.cur.idx].count += 1;
-            if self.sources[vector.cur.idx].last < vector.cur.last {
-                self.sources[vector.cur.idx].last = vector.cur.last
+            for sensor in &vector.cur.metadata {
+                if let Some(src) = self.sensors.get_mut(&sensor.serial) {
+                    src.aircraft_count += 1;
+                    src.last_timestamp = vector.cur.lastseen
+                }
             }
         }
     }
@@ -569,15 +721,15 @@ mod tests {
             interactive = true
             serve_port = 8080
             expire = 1
+            prevent_sleep = false
             update_position = false
 
             [[sources]]
-            address = { Udp = "0.0.0.0:1234" }
+            udp = "0.0.0.0:1234"
             airport = 'LFBO'
 
             [[sources]]
-            address = { Udp = "0.0.0.0:3456" }
-            [reference]
+            udp = "0.0.0.0:3456"
             latitude = 48.723
             longitude = 2.379
             "#,

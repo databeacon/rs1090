@@ -1,12 +1,12 @@
 use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use num_complex::Complex;
-use soapysdr::{Args, Device, Direction};
+use soapysdr::{configure_logging, Args, Device, Direction};
 use tokio::sync::mpsc;
 
 use crate::decode::crc::modes_checksum;
-use crate::decode::{TimeSource, TimedMessage};
+use crate::decode::time::now_in_ns;
+use crate::prelude::*;
 use std::fmt::{self, Display, Formatter};
 use tracing::{error, info};
 
@@ -20,15 +20,28 @@ const MODES_SHORT_MSG_BYTES: usize = 7;
 const MODES_MAG_BUF_SAMPLES: usize = 131_072;
 const TRAILING_SAMPLES: usize = 326;
 
-pub async fn receiver<A: Into<Args>>(
+pub async fn receiver<A: Into<Args> + fmt::Display + std::marker::Copy>(
     tx: mpsc::Sender<TimedMessage>,
     args: Option<A>,
-    idx: usize,
+    serial: u64,
+    name: Option<String>,
 ) {
+    match args {
+        Some(args) => {
+            info!("Trying to connect rtlsdr with options: {}", args)
+        }
+        None => info!("Trying to connect rtlsdr with options: driver=rtlsdr"),
+    }
+    configure_logging();
     let device = match args {
         None => Device::new("driver=rtlsdr"),
         Some(args) => Device::new(args),
     };
+
+    let name = name.or(args
+        .map(|a| Some(format!("{}", a)))
+        .unwrap_or(Some("rtlsdr".to_string())));
+
     let device = match device {
         Ok(device) => {
             info!("{:#}", device.hardware_info().unwrap());
@@ -63,25 +76,29 @@ pub async fn receiver<A: Into<Args>>(
                 let outbuf = magnitude(buf);
                 let resulting_data = demodulate2400(&outbuf).unwrap();
                 for data in resulting_data {
-                    let timestamp = SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .expect("SystemTime before unix epoch")
-                        .as_micros();
-                    let msg = TimedMessage {
-                        timestamp: timestamp as f64 * 1e-6,
-                        timesource: TimeSource::System,
-                        rssi: Some(10. * data.signal_level.log10()),
-                        frame: hex::encode(data.msg),
-                        message: None,
-                        idx,
+                    let system_timestamp = now_in_ns() as f64 * 1e-9;
+                    let metadata = SensorMetadata {
+                        system_timestamp,
+                        gnss_timestamp: None,
+                        nanoseconds: None,
+                        rssi: Some(10. * data.signal_level.log10() as f32),
+                        serial,
+                        name: name.clone(),
                     };
-                    if tx.send(msg).await.is_err() {
+                    let tmsg = TimedMessage {
+                        timestamp: system_timestamp,
+                        frame: data.msg.to_vec(),
+                        message: None,
+                        metadata: vec![metadata],
+                        decode_time: None,
+                    };
+                    if tx.send(tmsg).await.is_err() {
                         break 'receive;
                     }
                 }
             }
             Err(e) => {
-                eprintln!("SoapySDR read error: {}", e);
+                error!("SoapySDR read error: {}", e);
             }
         }
     }

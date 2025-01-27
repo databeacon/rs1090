@@ -4,12 +4,14 @@ pub mod commb;
 pub mod cpr;
 pub mod crc;
 pub mod flarm;
+pub mod time;
 
 use adsb::{ADSB, ME};
-use commb::DataSelector;
+use commb::{DF20DataSelector, DF21DataSelector};
 use crc::modes_checksum;
 use deku::prelude::*;
-use serde::{Deserialize, Serialize};
+use once_cell::sync::OnceCell;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 use tracing::debug;
 
@@ -223,7 +225,8 @@ pub enum DF {
         ac: AC13Field,
         /// BDS Message, Comm-B
         #[serde(flatten)]
-        bds: DataSelector,
+        #[deku(ctx = "*ac")]
+        bds: DF20DataSelector,
         /// address/parity
         #[serde(rename = "icao24")]
         #[deku(ctx = "crc")]
@@ -248,7 +251,7 @@ pub enum DF {
         id: IdentityCode,
         /// BDS Message, Comm-B
         #[serde(flatten)]
-        bds: DataSelector,
+        bds: DF21DataSelector,
         /// Address/Parity
         #[serde(rename = "icao24")]
         #[deku(ctx = "crc")]
@@ -474,42 +477,81 @@ impl fmt::Display for Message {
     }
 }
 
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum TimeSource {
-    /// The timestamp is provided by the system when it receives the message
-    System,
-    /// The timestamp is provided by the GPS in the header of the message
-    Radarcape,
-    /// The timestamp is provided by the user asking to decode the message
-    External,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SensorMetadata {
+    /// The timestamp when the message was received by the receptor
+    pub system_timestamp: f64,
+    /// The GNSS timestamp of the message
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gnss_timestamp: Option<f64>,
+    /// Number of nanoseconds since beginning of UTC day
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nanoseconds: Option<u64>,
+    /// The signal level
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rssi: Option<f32>,
+    /// The identifier of the receptor
+    pub serial: u64,
+    /// A possible name for the receptor
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
 }
 
-fn is_zero(value: &usize) -> bool {
-    *value == 0
+#[derive(Debug)]
+struct SerializeConfig {
+    /// Include the decode time in the serialization process (default: false)
+    pub decode_time: bool,
+}
+
+static CONFIG: OnceCell<SerializeConfig> = OnceCell::new();
+
+fn skip_serialize_decode_time(field: &Option<f64>) -> bool {
+    let decode_time = CONFIG.get().map(|cfg| cfg.decode_time).unwrap_or(false);
+    !decode_time | field.is_none()
+}
+
+pub fn serialize_config(decode_time: bool) {
+    CONFIG
+        .set(SerializeConfig { decode_time })
+        .expect("configuration can only happen once");
 }
 
 #[derive(Serialize)]
 pub struct TimedMessage {
+    /// The timestamp (in s) of the first time the message was received
     pub timestamp: f64,
-
-    pub timesource: TimeSource,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub rssi: Option<f64>,
-
-    pub frame: String,
-
+    /// The message payload
+    #[serde(serialize_with = "as_hex", deserialize_with = "from_hex")]
+    pub frame: Vec<u8>,
+    /// The decoded message
     #[serde(flatten)]
     pub message: Option<Message>,
+    /// Information about when and where the message was received
+    pub metadata: Vec<SensorMetadata>,
+    /// Debugging information about decoding time (not serialized)
+    #[serde(skip_serializing_if = "skip_serialize_decode_time")]
+    pub decode_time: Option<f64>,
+}
 
-    #[serde(skip_serializing_if = "is_zero")]
-    pub idx: usize,
+pub fn as_hex<S>(data: &Vec<u8>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let hex_string = hex::encode(data);
+    serializer.serialize_str(&hex_string)
+}
+
+pub fn from_hex<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let hex_string = String::deserialize(deserializer)?; // Deserialize as a string
+    hex::decode(&hex_string).map_err(serde::de::Error::custom) // Decode and handle errors
 }
 
 impl fmt::Display for TimedMessage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "{:.5},{}", &self.timestamp, &self.frame)?;
+        writeln!(f, "{:.5},{}", &self.timestamp, hex::encode(&self.frame))?;
         if let Some(msg) = &self.message {
             writeln!(f, "{}", msg)?;
         }
@@ -518,7 +560,7 @@ impl fmt::Display for TimedMessage {
 }
 impl fmt::Debug for TimedMessage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "{:.5},{}", &self.timestamp, &self.frame)?;
+        writeln!(f, "{:.5},{}", &self.timestamp, hex::encode(&self.frame))?;
         if let Some(msg) = &self.message {
             writeln!(f, "{:#}", msg)?;
         }
@@ -599,6 +641,17 @@ impl Serialize for ICAO {
     }
 }
 
+impl<'de> Deserialize<'de> for ICAO {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        <ICAO as std::str::FromStr>::from_str(&s)
+            .map_err(serde::de::Error::custom)
+    }
+}
+
 impl core::str::FromStr for ICAO {
     type Err = core::num::ParseIntError;
 
@@ -607,6 +660,13 @@ impl core::str::FromStr for ICAO {
         Ok(Self(num))
     }
 }
+
+impl From<IcaoParity> for ICAO {
+    fn from(ap: IcaoParity) -> Self {
+        Self(ap.0)
+    }
+}
+
 /// 13 bit identity code (squawk code), a 4-octal digit identifier
 #[derive(PartialEq, DekuRead, Copy, Clone)]
 pub struct IdentityCode(#[deku(reader = "Self::read(deku::reader)")] pub u16);
@@ -887,7 +947,6 @@ pub enum KE {
 /// The actual meaning is just 4 octal numbers, but we convert it into a hex
 /// number that happens to represent the four octal numbers.
 ///
-
 #[rustfmt::skip]
 pub fn decode_id13(id13_field: u16) -> u16 {
     let mut hex_gillham: u16 = 0;
