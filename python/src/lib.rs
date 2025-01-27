@@ -28,7 +28,8 @@ use rs1090::prelude::*;
 
 #[pyfunction]
 fn decode_1090(msg: String) -> PyResult<Vec<u8>> {
-    let bytes = hex::decode(msg).unwrap();
+    let bytes = hex::decode(msg)
+        .map_err(|e| DecodeError(DekuError::Parse(e.to_string().into())))?;
     if let Ok((_, msg)) = Message::from_bytes((&bytes, 0)) {
         let pkl = serde_pickle::to_vec(&msg, Default::default()).unwrap();
         Ok(pkl)
@@ -49,7 +50,8 @@ impl From<DecodeError> for PyErr {
 
 #[pyfunction]
 fn decode_bds05(msg: String) -> PyResult<Vec<u8>> {
-    let bytes = hex::decode(msg).unwrap();
+    let bytes = hex::decode(msg)
+        .map_err(|e| DecodeError(DekuError::Parse(e.to_string().into())))?;
     let tc = &bytes[4] >> 3;
     if (9..22).contains(&tc) && tc != 19 {
         match AirbornePosition::from_bytes((&bytes[4..], 0)) {
@@ -71,7 +73,8 @@ fn decode_bds05(msg: String) -> PyResult<Vec<u8>> {
 
 #[pyfunction]
 fn decode_bds10(msg: String) -> PyResult<Vec<u8>> {
-    let bytes = hex::decode(msg).unwrap();
+    let bytes = hex::decode(msg)
+        .map_err(|e| DecodeError(DekuError::Parse(e.to_string().into())))?;
     match DataLinkCapability::from_bytes((&bytes[4..], 0)) {
         Ok((_, msg)) => {
             let pkl = serde_pickle::to_vec(&msg, Default::default()).unwrap();
@@ -83,7 +86,8 @@ fn decode_bds10(msg: String) -> PyResult<Vec<u8>> {
 
 #[pyfunction]
 fn decode_bds17(msg: String) -> PyResult<Vec<u8>> {
-    let bytes = hex::decode(msg).unwrap();
+    let bytes = hex::decode(msg)
+        .map_err(|e| DecodeError(DekuError::Parse(e.to_string().into())))?;
     match CommonUsageGICBCapabilityReport::from_bytes((&bytes[4..], 0)) {
         Ok((_, msg)) => {
             let pkl = serde_pickle::to_vec(&msg, Default::default()).unwrap();
@@ -95,7 +99,8 @@ fn decode_bds17(msg: String) -> PyResult<Vec<u8>> {
 
 #[pyfunction]
 fn decode_bds18(msg: String) -> PyResult<Vec<u8>> {
-    let bytes = hex::decode(msg).unwrap();
+    let bytes = hex::decode(msg)
+        .map_err(|e| DecodeError(DekuError::Parse(e.to_string().into())))?;
     match GICBCapabilityReportPart1::from_bytes((&bytes[4..], 0)) {
         Ok((_, msg)) => {
             let pkl = serde_pickle::to_vec(&msg, Default::default()).unwrap();
@@ -107,7 +112,8 @@ fn decode_bds18(msg: String) -> PyResult<Vec<u8>> {
 
 #[pyfunction]
 fn decode_bds19(msg: String) -> PyResult<Vec<u8>> {
-    let bytes = hex::decode(msg).unwrap();
+    let bytes = hex::decode(msg)
+        .map_err(|e| DecodeError(DekuError::Parse(e.to_string().into())))?;
     match GICBCapabilityReportPart2::from_bytes((&bytes[4..], 0)) {
         Ok((_, msg)) => {
             let pkl = serde_pickle::to_vec(&msg, Default::default()).unwrap();
@@ -119,7 +125,8 @@ fn decode_bds19(msg: String) -> PyResult<Vec<u8>> {
 
 #[pyfunction]
 fn decode_bds20(msg: String) -> PyResult<Vec<u8>> {
-    let bytes = hex::decode(msg).unwrap();
+    let bytes = hex::decode(msg)
+        .map_err(|e| DecodeError(DekuError::Parse(e.to_string().into())))?;
     match AircraftIdentification::from_bytes((&bytes[4..], 0)) {
         Ok((_, msg)) => {
             let pkl = serde_pickle::to_vec(&msg, Default::default()).unwrap();
@@ -131,7 +138,8 @@ fn decode_bds20(msg: String) -> PyResult<Vec<u8>> {
 
 #[pyfunction]
 fn decode_bds21(msg: String) -> PyResult<Vec<u8>> {
-    let bytes = hex::decode(msg).unwrap();
+    let bytes = hex::decode(msg)
+        .map_err(|e| DecodeError(DekuError::Parse(e.to_string().into())))?;
     match AircraftAndAirlineRegistrationMarkings::from_bytes((&bytes[4..], 0)) {
         Ok((_, msg)) => {
             let pkl = serde_pickle::to_vec(&msg, Default::default()).unwrap();
@@ -143,7 +151,8 @@ fn decode_bds21(msg: String) -> PyResult<Vec<u8>> {
 
 #[pyfunction]
 fn decode_bds30(msg: String) -> PyResult<Vec<u8>> {
-    let bytes = hex::decode(msg).unwrap();
+    let bytes = hex::decode(msg)
+        .map_err(|e| DecodeError(DekuError::Parse(e.to_string().into())))?;
     match ACASResolutionAdvisory::from_bytes((&bytes[4..], 0)) {
         Ok((_, msg)) => {
             let pkl = serde_pickle::to_vec(&msg, Default::default()).unwrap();
@@ -155,7 +164,8 @@ fn decode_bds30(msg: String) -> PyResult<Vec<u8>> {
 
 #[pyfunction]
 fn decode_bds40(msg: String) -> PyResult<Vec<u8>> {
-    let bytes = hex::decode(msg).unwrap();
+    let bytes = hex::decode(msg)
+        .map_err(|e| DecodeError(DekuError::Parse(e.to_string().into())))?;
     match SelectedVerticalIntention::from_bytes((&bytes[4..], 0)) {
         Ok((_, msg)) => {
             let pkl = serde_pickle::to_vec(&msg, Default::default()).unwrap();
@@ -167,7 +177,8 @@ fn decode_bds40(msg: String) -> PyResult<Vec<u8>> {
 
 #[pyfunction]
 fn decode_bds44(msg: String) -> PyResult<Vec<u8>> {
-    let bytes = hex::decode(msg).unwrap();
+    let bytes = hex::decode(msg)
+        .map_err(|e| DecodeError(DekuError::Parse(e.to_string().into())))?;
     match MeteorologicalRoutineAirReport::from_bytes((&bytes[4..], 0)) {
         Ok((_, msg)) => {
             let pkl = serde_pickle::to_vec(&msg, Default::default()).unwrap();
@@ -178,7 +189,8 @@ fn decode_bds44(msg: String) -> PyResult<Vec<u8>> {
 }
 #[pyfunction]
 fn decode_bds45(msg: String) -> PyResult<Vec<u8>> {
-    let bytes = hex::decode(msg).unwrap();
+    let bytes = hex::decode(msg)
+        .map_err(|e| DecodeError(DekuError::Parse(e.to_string().into())))?;
     match MeteorologicalHazardReport::from_bytes((&bytes[4..], 0)) {
         Ok((_, msg)) => {
             let pkl = serde_pickle::to_vec(&msg, Default::default()).unwrap();
@@ -190,7 +202,8 @@ fn decode_bds45(msg: String) -> PyResult<Vec<u8>> {
 
 #[pyfunction]
 fn decode_bds50(msg: String) -> PyResult<Vec<u8>> {
-    let bytes = hex::decode(msg).unwrap();
+    let bytes = hex::decode(msg)
+        .map_err(|e| DecodeError(DekuError::Parse(e.to_string().into())))?;
     match TrackAndTurnReport::from_bytes((&bytes[4..], 0)) {
         Ok((_, msg)) => {
             let pkl = serde_pickle::to_vec(&msg, Default::default()).unwrap();
@@ -202,7 +215,8 @@ fn decode_bds50(msg: String) -> PyResult<Vec<u8>> {
 
 #[pyfunction]
 fn decode_bds60(msg: String) -> PyResult<Vec<u8>> {
-    let bytes = hex::decode(msg).unwrap();
+    let bytes = hex::decode(msg)
+        .map_err(|e| DecodeError(DekuError::Parse(e.to_string().into())))?;
     match HeadingAndSpeedReport::from_bytes((&bytes[4..], 0)) {
         Ok((_, msg)) => {
             let pkl = serde_pickle::to_vec(&msg, Default::default()).unwrap();
@@ -214,7 +228,8 @@ fn decode_bds60(msg: String) -> PyResult<Vec<u8>> {
 
 #[pyfunction]
 fn decode_bds65(msg: String) -> PyResult<Vec<u8>> {
-    let bytes = hex::decode(msg).unwrap();
+    let bytes = hex::decode(msg)
+        .map_err(|e| DecodeError(DekuError::Parse(e.to_string().into())))?;
     let tc = &bytes[4] >> 3;
     let enum_id = &bytes[4] & 0b111;
     match (tc, enum_id) {
@@ -242,7 +257,11 @@ fn decode_1090_vec(msgs_set: Vec<Vec<String>>) -> PyResult<Vec<u8>> {
         .map(|msgs| {
             msgs.iter()
                 .map(|msg| {
-                    let bytes = hex::decode(msg).unwrap();
+                    let bytes = hex::decode(msg)
+                        .map_err(|e| {
+                            DecodeError(DekuError::Parse(e.to_string().into()))
+                        })
+                        .ok()?;
                     if let Ok((_, msg)) = Message::from_bytes((&bytes, 0)) {
                         Some(msg)
                     } else {
@@ -271,7 +290,11 @@ fn decode_1090t_vec(
             msgs.iter()
                 .zip(ts)
                 .filter_map(|(msg, timestamp)| {
-                    let bytes = hex::decode(msg).unwrap();
+                    let bytes = hex::decode(msg)
+                        .map_err(|e| {
+                            DecodeError(DekuError::Parse(e.to_string().into()))
+                        })
+                        .ok()?;
                     if let Ok((_, message)) = Message::from_bytes((&bytes, 0)) {
                         Some(TimedMessage {
                             timestamp,
@@ -306,7 +329,8 @@ fn decode_flarm(
     reflat: f64,
     reflon: f64,
 ) -> PyResult<Vec<u8>> {
-    let bytes = hex::decode(msg).unwrap();
+    let bytes = hex::decode(msg)
+        .map_err(|e| DecodeError(DekuError::Parse(e.to_string().into())))?;
     let reference = [reflat, reflon];
     if let Ok(msg) = Flarm::from_record(ts, &reference, &bytes) {
         let pkl = serde_pickle::to_vec(&msg, Default::default()).unwrap();
@@ -342,7 +366,11 @@ fn decode_flarm_vec(
                 .zip(ts)
                 .zip(reference)
                 .filter_map(|((msg, timestamp), reference)| {
-                    let bytes = hex::decode(msg).unwrap();
+                    let bytes = hex::decode(msg)
+                        .map_err(|e| {
+                            DecodeError(DekuError::Parse(e.to_string().into()))
+                        })
+                        .ok()?;
                     if let Ok(flarm) =
                         Flarm::from_record(timestamp, &reference, &bytes)
                     {
