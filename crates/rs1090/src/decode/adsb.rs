@@ -1,7 +1,7 @@
 use super::bds::{bds05, bds06, bds08, bds09, bds61, bds62, bds65};
 use super::{Capability, ICAO};
 use deku::prelude::*;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /**
@@ -15,7 +15,7 @@ use std::fmt;
  *
  */
 
-#[derive(Debug, PartialEq, DekuRead, Clone, Serialize)]
+#[derive(Debug, PartialEq, DekuRead, Clone, Serialize, Deserialize)]
 pub struct ADSB {
     /// The transponder capability
     #[serde(skip)]
@@ -64,14 +64,14 @@ impl fmt::Display for ADSB {
 * | 31       | [`bds65::AircraftOperationStatus`]                |
 */
 
-#[derive(Debug, PartialEq, Serialize, DekuRead, Clone)]
+#[derive(Debug, PartialEq, Serialize, DekuRead, Clone, Deserialize)]
 pub struct Unused {
     #[deku(skip, pad_bits_after = "48", default = "true")]
     #[serde(skip)]
     unused: bool,
 }
 
-#[derive(Debug, PartialEq, Serialize, DekuRead, Clone)]
+#[derive(Debug, PartialEq, Serialize, DekuRead, Clone, Deserialize)]
 #[deku(id_type = "u8", bits = "5")]
 //#[serde(untagged)]
 #[serde(tag = "bds")]
@@ -122,6 +122,12 @@ pub enum ME {
     #[deku(id = "31")]
     #[serde(rename = "65")]
     BDS65(bds65::AircraftOperationStatus),
+}
+
+impl Default for ME {
+    fn default() -> Self {
+        ME::NoPosition(Unused { unused: true })
+    }
 }
 
 impl fmt::Display for ME {

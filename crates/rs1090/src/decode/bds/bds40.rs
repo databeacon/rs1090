@@ -1,7 +1,7 @@
 #![allow(clippy::suspicious_else_formatting)]
 
 use deku::prelude::*;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /**
  * ## Selected vertical intention (BDS 4,0)
@@ -12,7 +12,7 @@ use serde::Serialize;
  * with an altitude command.
  */
 
-#[derive(Debug, PartialEq, Serialize, DekuRead, Clone)]
+#[derive(Debug, PartialEq, Serialize, DekuRead, Clone, Deserialize)]
 #[serde(tag = "bds", rename = "40")]
 pub struct SelectedVerticalIntention {
     #[deku(reader = "read_selected(deku::reader)")]
@@ -71,9 +71,12 @@ pub struct SelectedVerticalIntention {
     pub target_altitude_source: TargetSource,
 }
 
-#[derive(Debug, PartialEq, Serialize, DekuRead, Clone)]
+#[derive(
+    Debug, PartialEq, Serialize, DekuRead, Clone, Deserialize, Default,
+)]
 #[deku(id_type = "u8", bits = "2")]
 pub enum TargetSource {
+    #[default]
     #[deku(id = "0")]
     Unknown,
     #[deku(id = "1")]

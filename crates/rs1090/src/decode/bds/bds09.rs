@@ -2,7 +2,7 @@
 
 use deku::prelude::*;
 use serde::ser::SerializeStruct;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /**
@@ -25,11 +25,10 @@ use std::fmt;
  * subtypes 2 and 4 at this moment.
  *
  */
-#[derive(Debug, PartialEq, Serialize, DekuRead, Clone)]
+#[derive(Debug, PartialEq, Serialize, DekuRead, Clone, Deserialize)]
 pub struct AirborneVelocity {
     #[deku(bits = "3")]
     #[serde(skip)]
-    /// The subtype value
     pub subtype: u8,
 
     #[deku(bits = "1")]
@@ -106,7 +105,7 @@ fn read_geobaro<R: deku::no_std_io::Read + deku::no_std_io::Seek>(
     Ok(value)
 }
 
-#[derive(Debug, PartialEq, Serialize, DekuRead, Clone)]
+#[derive(Debug, PartialEq, Serialize, DekuRead, Clone, Deserialize)]
 #[deku(ctx = "subtype: u8", id = "subtype")]
 #[serde(untagged)]
 pub enum AirborneVelocitySubType {
@@ -125,9 +124,10 @@ pub enum AirborneVelocitySubType {
     Reserved1(#[deku(bits = "22")] u32),
 }
 
-#[derive(Debug, PartialEq, DekuRead, Copy, Clone)]
+#[derive(Debug, PartialEq, DekuRead, Copy, Clone, Deserialize, Default)]
 #[deku(id_type = "u8", bits = "1")]
 pub enum Sign {
+    #[default]
     Positive = 0,
     Negative = 1,
 }
@@ -155,7 +155,7 @@ impl fmt::Display for Sign {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, DekuRead, Copy, Clone)]
+#[derive(Debug, PartialEq, Serialize, DekuRead, Copy, Clone, Deserialize)]
 pub struct GroundSpeedDecoding {
     #[serde(skip)]
     pub ew_sign: Sign,
@@ -195,7 +195,7 @@ pub struct GroundSpeedDecoding {
     pub track: f64,
 }
 
-#[derive(Debug, PartialEq, DekuRead, Clone)]
+#[derive(Debug, PartialEq, DekuRead, Clone, Deserialize)]
 pub struct AirspeedSubsonicDecoding {
     #[deku(bits = "1")]
     pub status_heading: bool,
@@ -245,7 +245,7 @@ impl Serialize for AirspeedSubsonicDecoding {
     }
 }
 
-#[derive(Debug, PartialEq, DekuRead, Clone)]
+#[derive(Debug, PartialEq, DekuRead, Clone, Deserialize)]
 pub struct AirspeedSupersonicDecoding {
     #[deku(bits = "1")]
     pub status_heading: bool,
@@ -295,9 +295,12 @@ impl Serialize for AirspeedSupersonicDecoding {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, DekuRead)]
+#[derive(
+    Copy, Clone, Debug, PartialEq, DekuRead, Deserialize, Serialize, Default,
+)]
 #[deku(id_type = "u8", bits = "1")]
 pub enum AirspeedType {
+    #[default]
     IAS = 0,
     TAS = 1,
 }
@@ -329,7 +332,7 @@ pub enum DirectionNS {
     NorthToSouth = 1,
 }
 
-#[derive(Debug, PartialEq, Serialize, DekuRead, Copy, Clone)]
+#[derive(Debug, PartialEq, Serialize, DekuRead, Copy, Clone, Deserialize)]
 #[deku(id_type = "u8", bits = "1")]
 pub enum VerticalRateSource {
     #[serde(rename = "barometric")]

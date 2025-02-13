@@ -1,12 +1,12 @@
 use crate::decode::IdentityCode;
 use deku::prelude::*;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /**
  * ## Aircraft Status (BDS 6,1)
  */
-#[derive(Debug, PartialEq, Serialize, DekuRead, Copy, Clone)]
+#[derive(Debug, PartialEq, Serialize, DekuRead, Copy, Clone, Deserialize)]
 pub struct AircraftStatus {
     /// The subtype can be "emergency/priority" or "ACAS RA"
     pub subtype: AircraftStatusType,
@@ -25,10 +25,13 @@ impl fmt::Display for AircraftStatus {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, DekuRead, Copy, Clone)]
+#[derive(
+    Debug, PartialEq, Serialize, DekuRead, Copy, Clone, Default, Deserialize,
+)]
 #[deku(id_type = "u8", bits = "3")]
 #[serde(rename_all = "snake_case")]
 pub enum AircraftStatusType {
+    #[default]
     #[deku(id = "0")]
     NoInformation,
     #[deku(id = "1")]
@@ -41,10 +44,13 @@ pub enum AircraftStatusType {
     Reserved,
 }
 
-#[derive(Debug, PartialEq, Serialize, DekuRead, Copy, Clone)]
+#[derive(
+    Debug, PartialEq, Serialize, DekuRead, Copy, Clone, Deserialize, Default,
+)]
 #[deku(id_type = "u8", bits = "3")]
 #[serde(rename_all = "snake_case")]
 pub enum EmergencyState {
+    #[default]
     None = 0,
     General = 1,
     Medical = 2,

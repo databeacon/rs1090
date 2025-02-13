@@ -1,10 +1,10 @@
 use deku::prelude::*;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /**
  * ## Track and turn report (BDS 5,0)
  */
-#[derive(Debug, PartialEq, Serialize, DekuRead, Clone)]
+#[derive(Debug, PartialEq, Serialize, DekuRead, Clone, Deserialize)]
 #[serde(tag = "bds", rename = "50")]
 pub struct TrackAndTurnReport {
     #[deku(reader = "read_roll(deku::reader)")] // 11 bits

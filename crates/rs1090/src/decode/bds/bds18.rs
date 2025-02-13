@@ -1,5 +1,5 @@
 use deku::prelude::*;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /**
  * ## GICB capability report (1 of 5) (BDS 1,8)
@@ -10,7 +10,7 @@ use serde::Serialize;
  *
  */
 
-#[derive(Debug, PartialEq, Serialize, DekuRead, Copy, Clone)]
+#[derive(Debug, PartialEq, Serialize, DekuRead, Copy, Clone, Deserialize)]
 #[serde(tag = "bds", rename = "18")]
 pub struct GICBCapabilityReportPart1 {
     #[deku(bits = "1", map = "fail_if_true")]

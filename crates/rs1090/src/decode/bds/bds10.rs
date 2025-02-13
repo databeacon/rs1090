@@ -1,5 +1,5 @@
 use deku::prelude::*;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /**
  * ## Data link Capability Report (BDS 1,0)
@@ -11,7 +11,7 @@ use serde::Serialize;
  * number, which is 1,0, or 0001 0000 in binary format.
  */
 
-#[derive(Debug, PartialEq, Serialize, DekuRead, Clone)]
+#[derive(Debug, PartialEq, Serialize, DekuRead, Clone, Deserialize)]
 #[serde(tag = "bds", rename = "10")]
 pub struct DataLinkCapability {
     #[deku(bits = "8", map = "fail_if_not10")]

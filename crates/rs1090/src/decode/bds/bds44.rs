@@ -1,11 +1,11 @@
 use deku::prelude::*;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /**
  * ## Meteorological Routine Air Report (BDS 4,4)
  */
 
-#[derive(Debug, PartialEq, Serialize, DekuRead, Clone)]
+#[derive(Debug, PartialEq, Serialize, DekuRead, Clone, Deserialize)]
 #[serde(tag = "bds", rename = "44")]
 pub struct MeteorologicalRoutineAirReport {
     /// Figure of merit / source
@@ -37,8 +37,9 @@ pub struct MeteorologicalRoutineAirReport {
     pub humidity: Option<f64>,
 }
 
-#[derive(Debug, PartialEq, Serialize, Clone)]
+#[derive(Debug, PartialEq, Serialize, Clone, Default, Deserialize)]
 pub enum Turbulence {
+    #[default]
     Nil,
     Light,
     Moderate,

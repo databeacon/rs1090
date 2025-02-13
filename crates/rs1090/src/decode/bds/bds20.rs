@@ -1,6 +1,6 @@
 use super::bds08;
 use deku::prelude::*;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /**
  * ## Aircraft identification (BDS 2,0)
@@ -9,7 +9,7 @@ use serde::Serialize;
  * aircraft can be decoded from BDS 2,0 messages.
  */
 
-#[derive(Debug, PartialEq, Serialize, DekuRead, Clone)]
+#[derive(Debug, PartialEq, Serialize, DekuRead, Clone, Deserialize)]
 #[serde(tag = "bds", rename = "20")]
 pub struct AircraftIdentification {
     #[deku(bits = "8", map = "fail_if_not20")]

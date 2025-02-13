@@ -1,12 +1,12 @@
 use deku::prelude::*;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tracing::trace;
 
 /**
  * ## Meteorological Hazard Report (BDS 4,5)
  */
 
-#[derive(Debug, PartialEq, Serialize, DekuRead, Clone)]
+#[derive(Debug, PartialEq, Serialize, DekuRead, Clone, Deserialize)]
 #[serde(tag = "bds", rename = "45")]
 pub struct MeteorologicalHazardReport {
     #[deku(reader = "read_level(deku::reader)")]
@@ -46,8 +46,9 @@ pub struct MeteorologicalHazardReport {
     pub reserved: u8,
 }
 
-#[derive(Debug, PartialEq, Serialize, Clone)]
+#[derive(Debug, PartialEq, Serialize, Clone, Deserialize, Default)]
 pub enum Level {
+    #[default]
     Nil,
     Light,
     Moderate,

@@ -36,7 +36,7 @@ use tracing::debug;
  * | 24       | [`DF::CommDExtended`]               | 3.1.2.7.3   |
  */
 
-#[derive(Debug, PartialEq, Serialize, DekuRead, Clone)]
+#[derive(Debug, PartialEq, Deserialize, Serialize, DekuRead, Clone)]
 #[deku(id_type = "u8", bits = "5", ctx = "crc: u32")]
 #[serde(tag = "df")]
 pub enum DF {
@@ -281,7 +281,7 @@ pub enum DF {
 /// The entry point to Mode S and ADS-B decoding
 ///
 /// Use as `Message::try_from()` in mostly all applications
-#[derive(Debug, PartialEq, Serialize, Clone)]
+#[derive(Debug, PartialEq, Deserialize, Serialize, Clone)]
 pub struct Message {
     /// Calculated from all bits, should be 0 for ADS-B (raises a DekuError),
     /// icao24 otherwise
@@ -570,7 +570,9 @@ impl fmt::Debug for TimedMessage {
 
 /// ICAO 24-bit address, commonly use to reference airframes, i.e. tail numbers
 /// of aircraft
-#[derive(PartialEq, Eq, PartialOrd, DekuRead, Hash, Copy, Clone, Ord)]
+#[derive(
+    PartialEq, Eq, PartialOrd, DekuRead, Hash, Copy, Clone, Ord, Deserialize,
+)]
 #[deku(ctx = "crc: u32")]
 pub struct IcaoParity(
     // Ok it looks convoluted, actually the final bits are already read when
@@ -614,7 +616,9 @@ impl core::str::FromStr for IcaoParity {
 
 /// ICAO 24-bit address, commonly use to reference airframes, i.e. tail numbers
 /// of aircraft
-#[derive(PartialEq, Eq, PartialOrd, DekuRead, Hash, Copy, Clone, Ord)]
+#[derive(
+    PartialEq, Eq, PartialOrd, DekuRead, Hash, Copy, Clone, Ord, Default,
+)]
 pub struct ICAO(#[deku(bits = 24, endian = "big")] pub u32);
 
 impl fmt::Debug for ICAO {
@@ -668,7 +672,7 @@ impl From<IcaoParity> for ICAO {
 }
 
 /// 13 bit identity code (squawk code), a 4-octal digit identifier
-#[derive(PartialEq, DekuRead, Copy, Clone)]
+#[derive(PartialEq, DekuRead, Copy, Clone, Deserialize)]
 pub struct IdentityCode(#[deku(reader = "Self::read(deku::reader)")] pub u16);
 
 impl IdentityCode {
@@ -708,7 +712,9 @@ impl Serialize for IdentityCode {
 }
 
 /// 13 bit encoded altitude
-#[derive(Debug, PartialEq, Eq, Serialize, DekuRead, Copy, Clone)]
+#[derive(
+    Debug, PartialEq, Eq, Deserialize, Serialize, DekuRead, Copy, Clone, Default,
+)]
 pub struct AC13Field(#[deku(reader = "Self::read(deku::reader)")] pub u16);
 
 impl AC13Field {
@@ -750,11 +756,14 @@ impl AC13Field {
 }
 
 /// Transponder level and additional information (3.1.2.5.2.2.1)
-#[derive(Debug, PartialEq, Serialize, DekuRead, Copy, Clone)]
+#[derive(
+    Debug, PartialEq, Serialize, DekuRead, Copy, Clone, Deserialize, Default,
+)]
 #[deku(id_type = "u8", bits = "3")]
 #[allow(non_camel_case_types)]
 pub enum Capability {
     /// Level 1 transponder (surveillance only), and either airborne or on the ground
+    #[default]
     #[serde(rename = "level1")]
     AG_LEVEL1 = 0x00,
     #[deku(id_pat = "0x01..=0x03")]
@@ -792,7 +801,9 @@ impl fmt::Display for Capability {
 }
 
 /// Airborne or Ground and SPI (used in DF=4, 5, 20 or 21)
-#[derive(Debug, PartialEq, Serialize, DekuRead, Copy, Clone)]
+#[derive(
+    Debug, PartialEq, Deserialize, Serialize, DekuRead, Copy, Clone, Default,
+)]
 #[deku(id_type = "u8", bits = "3")]
 #[serde(rename_all = "snake_case")]
 pub enum FlightStatus {
@@ -803,6 +814,7 @@ pub enum FlightStatus {
     AlertSpiAirborneGround = 0b100,
     NoAlertSpiAirborneGround = 0b101,
     Reserved = 0b110,
+    #[default]
     NotAssigned = 0b111,
 }
 
@@ -825,19 +837,24 @@ impl fmt::Display for FlightStatus {
 }
 
 /// The downlink request (used in DF=4, 5, 20 or 21)
-#[derive(Debug, PartialEq, Eq, DekuRead, Copy, Clone)]
+#[derive(
+    Debug, PartialEq, Eq, DekuRead, Copy, Clone, Serialize, Deserialize, Default,
+)]
 #[deku(id_type = "u8", bits = "5")]
 pub enum DownlinkRequest {
     None = 0b00000,
     RequestSendCommB = 0b00001,
     CommBBroadcastMsg1 = 0b00100,
     CommBBroadcastMsg2 = 0b00101,
+    #[default]
     #[deku(id_pat = "_")]
     Unknown,
 }
 
 /// The utility message (used in DF=4, 5, 20 or 21)
-#[derive(Debug, PartialEq, Eq, DekuRead, Copy, Clone)]
+#[derive(
+    Debug, PartialEq, Eq, DekuRead, Copy, Clone, Serialize, Deserialize, Default,
+)]
 pub struct UtilityMessage {
     #[deku(bits = "4")]
     pub iis: u8,
@@ -845,9 +862,12 @@ pub struct UtilityMessage {
 }
 
 /// The utility message type (used in DF=4, 5, 20 or 21)
-#[derive(Debug, PartialEq, Eq, DekuRead, Copy, Clone)]
+#[derive(
+    Debug, PartialEq, Eq, DekuRead, Copy, Clone, Serialize, Deserialize, Default,
+)]
 #[deku(id_type = "u8", bits = "2")]
 pub enum UtilityMessageType {
+    #[default]
     NoInformation = 0b00,
     CommB = 0b01,
     CommC = 0b10,
@@ -855,7 +875,7 @@ pub enum UtilityMessageType {
 }
 
 /// The control field in TIS-B messages (DF=18)
-#[derive(Debug, PartialEq, Serialize, DekuRead, Clone)]
+#[derive(Debug, PartialEq, Serialize, DekuRead, Clone, Deserialize)]
 pub struct ControlField {
     #[serde(rename = "tisb")]
     pub field_type: ControlFieldType,
@@ -874,7 +894,7 @@ impl fmt::Display for ControlField {
 }
 
 /// The control field type in TIS-B messages (DF=18)
-#[derive(Debug, PartialEq, serde::Serialize, DekuRead, Clone)]
+#[derive(Debug, PartialEq, serde::Serialize, DekuRead, Clone, Deserialize)]
 #[deku(id_type = "u8", bits = "3")]
 #[allow(non_camel_case_types)]
 pub enum ControlFieldType {
@@ -928,9 +948,12 @@ impl fmt::Display for ControlFieldType {
 }
 
 /// Uplink / Downlink (DF=24)
-#[derive(Debug, PartialEq, Eq, DekuRead, Copy, Clone)]
+#[derive(
+    Debug, PartialEq, Eq, DekuRead, Copy, Clone, Serialize, Deserialize, Default,
+)]
 #[deku(id_type = "u8", bits = "1")]
 pub enum KE {
+    #[default]
     DownlinkELMTx = 0,
     UplinkELMAck = 1,
 }

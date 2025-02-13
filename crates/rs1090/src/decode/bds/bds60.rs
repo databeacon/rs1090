@@ -1,5 +1,5 @@
 use deku::prelude::*;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /**
 * ## Heading and speed report (BDS 6,0)
@@ -14,7 +14,7 @@ use serde::Serialize;
 *   3. Inertial Reference System/Flight Management System
 *
 */
-#[derive(Debug, PartialEq, Serialize, DekuRead, Clone)]
+#[derive(Debug, PartialEq, Serialize, DekuRead, Clone, Deserialize)]
 #[serde(tag = "bds", rename = "60")]
 pub struct HeadingAndSpeedReport {
     #[deku(reader = "read_heading(deku::reader)")] // 12 bits

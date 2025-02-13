@@ -1,6 +1,6 @@
 use deku::prelude::*;
 use regex::Regex;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tracing::{debug, trace};
 
 /**
@@ -10,7 +10,7 @@ use tracing::{debug, trace};
  * necessity of compiling and maintaining continuously updated data banks.
  */
 
-#[derive(Debug, PartialEq, Serialize, DekuRead, Clone)]
+#[derive(Debug, PartialEq, Serialize, DekuRead, Clone, Deserialize)]
 #[serde(tag = "bds", rename = "21")]
 pub struct AircraftAndAirlineRegistrationMarkings {
     #[deku(bits = "1")]

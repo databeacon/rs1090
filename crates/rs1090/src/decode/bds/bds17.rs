@@ -1,5 +1,5 @@
 use deku::prelude::*;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /**
  * ## Common usage GICB capability report (BDS 1,7)
@@ -10,7 +10,7 @@ use serde::Serialize;
  *
  */
 
-#[derive(Debug, PartialEq, Serialize, DekuRead, Copy, Clone)]
+#[derive(Debug, PartialEq, Serialize, DekuRead, Copy, Clone, Deserialize)]
 #[serde(tag = "bds", rename = "17")]
 pub struct CommonUsageGICBCapabilityReport {
     #[deku(bits = "1")]

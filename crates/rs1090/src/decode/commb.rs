@@ -14,7 +14,7 @@ use super::bds::bds60::HeadingAndSpeedReport;
 use super::bds::bds65::AircraftOperationStatus;
 use super::AC13Field;
 use deku::prelude::*;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 use tracing::debug;
 
@@ -26,7 +26,7 @@ use tracing::debug;
  * and the last two codes (4,4, 4,5) report meteorological information.
  */
 
-#[derive(Debug, PartialEq, Serialize, Clone, Default)]
+#[derive(Debug, PartialEq, Serialize, Clone, Default, Deserialize)]
 pub struct DF20DataSelector {
     #[serde(skip)]
     /// Set to true if all zeros, then there is no need to parse
@@ -75,7 +75,7 @@ pub struct DF20DataSelector {
     pub bds65: Option<AircraftOperationStatus>,
 }
 
-#[derive(Debug, PartialEq, Serialize, Clone, Default)]
+#[derive(Debug, PartialEq, Serialize, Clone, Default, Deserialize)]
 pub struct DF21DataSelector {
     #[serde(skip)]
     /// Set to true if all zeros, then there is no need to parse

@@ -1,7 +1,7 @@
 use crate::decode::cpr::CPRFormat;
 use crate::decode::{decode_id13, gray2alt};
 use deku::prelude::*;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /**
@@ -14,7 +14,9 @@ use std::fmt;
  * | 5  | 2  |  1  | 12  | 1 | 1 |   17    |   17    |
  */
 
-#[derive(Debug, PartialEq, Serialize, DekuRead, Copy, Clone)]
+#[derive(
+    Debug, PartialEq, Serialize, DekuRead, Copy, Clone, Deserialize, Default,
+)]
 pub struct AirbornePosition {
     #[deku(bits = 5)]
     tc: u8,
@@ -137,17 +139,23 @@ impl fmt::Display for AirbornePosition {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, DekuRead, Copy, Clone)]
+#[derive(
+    Debug, PartialEq, Eq, DekuRead, Copy, Clone, Serialize, Deserialize, Default,
+)]
 #[deku(id_type = "u8", bits = "2")]
 pub enum SurveillanceStatus {
+    #[default]
     NoCondition = 0,
     PermanentAlert = 1,
     TemporaryAlert = 2,
     SPICondition = 3,
 }
 
-#[derive(Debug, PartialEq, Eq, Serialize, Copy, Clone)]
+#[derive(
+    Debug, PartialEq, Eq, Serialize, Copy, Clone, Deserialize, Default,
+)]
 pub enum Source {
+    #[default]
     #[serde(rename = "barometric")]
     Barometric = 0,
     #[serde(rename = "GNSS")]

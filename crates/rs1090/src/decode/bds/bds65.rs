@@ -1,5 +1,5 @@
 use deku::prelude::*;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /**
@@ -13,7 +13,7 @@ use std::fmt;
  *
  */
 
-#[derive(Debug, PartialEq, Serialize, DekuRead, Copy, Clone)]
+#[derive(Debug, PartialEq, Serialize, DekuRead, Copy, Clone, Deserialize)]
 #[deku(id_type = "u8", bits = "3")]
 #[serde(untagged)]
 pub enum AircraftOperationStatus {
@@ -27,6 +27,12 @@ pub enum AircraftOperationStatus {
     Reserved(#[deku(bits = "5")] u8, [u8; 5]),
 }
 
+impl Default for AircraftOperationStatus {
+    fn default() -> Self {
+        Self::Reserved(0, [0, 0, 0, 0, 0])
+    }
+}
+
 impl fmt::Display for AircraftOperationStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "  Aircraft Operation Status (BDS 6,5)")?;
@@ -38,7 +44,9 @@ impl fmt::Display for AircraftOperationStatus {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, DekuRead, Copy, Clone)]
+#[derive(
+    Debug, PartialEq, Serialize, DekuRead, Copy, Clone, Deserialize, Default,
+)]
 pub struct OperationStatusAirborne {
     /// The capacity class
     #[serde(skip)]
@@ -62,7 +70,9 @@ impl fmt::Display for OperationStatusAirborne {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, DekuRead, Copy, Clone)]
+#[derive(
+    Debug, PartialEq, Serialize, DekuRead, Copy, Clone, Deserialize, Default,
+)]
 pub struct CapabilityClassAirborne {
     #[deku(bits = "2", assert_eq = "0")]
     #[serde(skip)]
@@ -125,7 +135,9 @@ impl fmt::Display for CapabilityClassAirborne {
 }
 
 /// Version 2 support only
-#[derive(Debug, PartialEq, Serialize, DekuRead, Copy, Clone)]
+#[derive(
+    Debug, PartialEq, Serialize, DekuRead, Copy, Clone, Deserialize, Default,
+)]
 pub struct OperationStatusSurface {
     /// The capacity class
     #[serde(skip)]
@@ -158,7 +170,9 @@ impl fmt::Display for OperationStatusSurface {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, DekuRead, Copy, Clone)]
+#[derive(
+    Debug, PartialEq, Serialize, DekuRead, Copy, Clone, Deserialize, Default,
+)]
 pub struct CapabilityClassSurface {
     #[deku(bits = "2", assert_eq = "0")]
     #[serde(skip)]
@@ -203,7 +217,9 @@ impl fmt::Display for CapabilityClassSurface {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, DekuRead, Copy, Clone)]
+#[derive(
+    Debug, PartialEq, Serialize, DekuRead, Copy, Clone, Deserialize, Default,
+)]
 pub struct OperationalMode {
     #[deku(bits = "2", assert_eq = "0")]
     #[serde(skip)]
@@ -254,7 +270,7 @@ impl fmt::Display for OperationalMode {
 /// (specification defined in RTCA document DO-260). Version 1 was introduced
 /// around 2008 (DO-260A), and version 2 around 2012 (DO-260B). Version 3 is
 /// currently being developed.
-#[derive(Debug, PartialEq, Serialize, DekuRead, Copy, Clone)]
+#[derive(Debug, PartialEq, Serialize, DekuRead, Copy, Clone, Deserialize)]
 #[deku(id_type = "u8", bits = "3")]
 #[serde(tag = "version")]
 pub enum ADSBVersionAirborne {
@@ -275,7 +291,15 @@ pub enum ADSBVersionAirborne {
     Reserved { id: u8 },
 }
 
-#[derive(Debug, PartialEq, Serialize, DekuRead, Copy, Clone)]
+impl Default for ADSBVersionAirborne {
+    fn default() -> Self {
+        Self::DOC9871AppendixA(Empty {})
+    }
+}
+
+#[derive(
+    Debug, PartialEq, Serialize, DekuRead, Copy, Clone, Deserialize, Default,
+)]
 pub struct AirborneV1 {
     #[deku(bits = "1")]
     #[serde(rename = "NICs")]
@@ -309,7 +333,9 @@ pub struct AirborneV1 {
     pub horizontal_reference_direction: u8,
 }
 
-#[derive(Debug, PartialEq, Serialize, DekuRead, Copy, Clone)]
+#[derive(
+    Debug, PartialEq, Serialize, DekuRead, Copy, Clone, Deserialize, Default,
+)]
 pub struct AirborneV2 {
     #[deku(bits = "1")]
     #[serde(rename = "NICa")]
@@ -357,7 +383,7 @@ pub struct AirborneV2 {
 /// (specification defined in RTCA document DO-260). Version 1 was introduced
 /// around 2008 (DO-260A), and version 2 around 2012 (DO-260B). Version 3 is
 /// currently being developed.
-#[derive(Debug, PartialEq, Serialize, DekuRead, Copy, Clone)]
+#[derive(Debug, PartialEq, Serialize, DekuRead, Copy, Clone, Deserialize)]
 #[deku(id_type = "u8", bits = "3")]
 #[serde(tag = "version")]
 pub enum ADSBVersionSurface {
@@ -378,7 +404,15 @@ pub enum ADSBVersionSurface {
     Reserved { id: u8 },
 }
 
-#[derive(Debug, PartialEq, Serialize, DekuRead, Copy, Clone)]
+impl Default for ADSBVersionSurface {
+    fn default() -> Self {
+        Self::DOC9871AppendixA(Empty {})
+    }
+}
+
+#[derive(
+    Debug, PartialEq, Serialize, DekuRead, Copy, Clone, Deserialize, Default,
+)]
 pub struct SurfaceV1 {
     #[deku(bits = "1")]
     #[serde(rename = "NICs")]
@@ -407,7 +441,9 @@ pub struct SurfaceV1 {
     pub horizontal_reference_direction: u8,
 }
 
-#[derive(Debug, PartialEq, Serialize, DekuRead, Copy, Clone)]
+#[derive(
+    Debug, PartialEq, Serialize, DekuRead, Copy, Clone, Deserialize, Default,
+)]
 pub struct SurfaceV2 {
     #[deku(bits = "1")]
     #[serde(rename = "NICa")]
@@ -443,10 +479,14 @@ pub struct SurfaceV2 {
     pub sil_supplement: u8,
 }
 
-#[derive(Debug, PartialEq, Serialize, DekuRead, Copy, Clone)]
+#[derive(
+    Debug, PartialEq, Serialize, DekuRead, Copy, Clone, Deserialize, Default,
+)]
 pub struct Empty {}
 
-#[derive(Debug, PartialEq, Serialize, DekuRead, Copy, Clone)]
+#[derive(
+    Debug, PartialEq, Serialize, DekuRead, Copy, Clone, Deserialize, Default,
+)]
 pub struct EmptyU8 {
     pub id: u8,
     pub unused: u8,

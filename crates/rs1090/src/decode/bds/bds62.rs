@@ -1,13 +1,15 @@
 #![allow(clippy::suspicious_else_formatting)]
 
 use deku::prelude::*;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /**
  * ## Target State and Status Information (BDS 6,2)
  */
-#[derive(Copy, Clone, Debug, Serialize, PartialEq, DekuRead)]
+#[derive(
+    Copy, Clone, Debug, Serialize, PartialEq, DekuRead, Deserialize, Default,
+)]
 pub struct TargetStateAndStatusInformation {
     #[deku(bits = "2")] // bits 5..=6
     #[serde(skip)]
@@ -206,10 +208,13 @@ impl fmt::Display for TargetStateAndStatusInformation {
     }
 }
 
-#[derive(Copy, Clone, Debug, Serialize, PartialEq, DekuRead)]
+#[derive(
+    Copy, Clone, Debug, Serialize, PartialEq, DekuRead, Deserialize, Default,
+)]
 #[deku(id_type = "u8", bits = "1")]
 /// Encode the source of information for selected altitude
 pub enum AltSource {
+    #[default]
     #[deku(id = "0")]
     #[serde(rename = "MCP/FCU")]
     /// Mode Control Panel/Flight Control Unit

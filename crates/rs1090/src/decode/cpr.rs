@@ -44,10 +44,13 @@ fn dist_haversine(pos1: &Position, pos2: &Position) -> f64 {
 }
 
 /// A flag to qualify a CPR position as odd or even
-#[derive(Debug, PartialEq, Eq, Serialize, DekuRead, Copy, Clone)]
+#[derive(
+    Debug, PartialEq, Eq, Serialize, DekuRead, Copy, Clone, Default, Deserialize,
+)]
 #[deku(id_type = "u8", bits = "1")]
 #[serde(rename_all = "snake_case")]
 pub enum CPRFormat {
+    #[default]
     Even = 0,
     Odd = 1,
 }

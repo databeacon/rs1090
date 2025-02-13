@@ -1,5 +1,5 @@
 use deku::prelude::*;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 use tracing::{debug, trace};
 
@@ -16,7 +16,7 @@ use tracing::{debug, trace};
  * TC: Type code CA: Aircraft category C*: A character
  */
 
-#[derive(Debug, PartialEq, DekuRead, Serialize, Clone)]
+#[derive(Debug, PartialEq, DekuRead, Serialize, Clone, Deserialize)]
 //#[deku(ctx = "id: u8")]
 pub struct AircraftIdentification {
     #[deku(bits = 5)]
@@ -100,8 +100,9 @@ impl TryFrom<u8> for Typecode {
 * - ICAO WTC M (Medium) is equivalent to ADS-B (TC=4, CA=2 or CA=3).
 * - ICAO WTC H (Heavy) or J (Super) is equivalent to ADS-B (TC=4, CA=5).
 */
-#[derive(Debug, PartialEq, Serialize, Copy, Clone)]
+#[derive(Debug, PartialEq, Serialize, Copy, Clone, Deserialize, Default)]
 pub enum WakeVortex {
+    #[default]
     Reserved,
 
     // Category C
